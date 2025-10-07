@@ -31,18 +31,15 @@ const NovelCarousel = ({ title, novels, isLoading, error }: { title: string; nov
   );
 };
 export function HomePage() {
-  const { data: latestNovels, isLoading: isLoadingLatest, error: errorLatest } = useQuery<Novel[]>({
-    queryKey: ['novels', 'latest'],
-    queryFn: () => api('/api/novels/latest'),
+  const { data: homeData, isLoading, error } = useQuery<{
+    latest: Novel[];
+    popular: Novel[];
+    completed: Novel[];
+  }>({
+    queryKey: ['homePageData'],
+    queryFn: () => api('/api/pages/home'),
   });
-  const { data: popularNovels, isLoading: isLoadingPopular, error: errorPopular } = useQuery<Novel[]>({
-    queryKey: ['novels', 'popular'],
-    queryFn: () => api('/api/novels/popular'),
-  });
-  const { data: completedNovels, isLoading: isLoadingCompleted, error: errorCompleted } = useQuery<Novel[]>({
-    queryKey: ['novels', 'completed'],
-    queryFn: () => api('/api/novels/completed'),
-  });
+
   return (
     <div className="space-y-16">
       <section
@@ -59,9 +56,9 @@ export function HomePage() {
           </p>
         </div>
       </section>
-      <NovelCarousel title="Latest Releases" novels={latestNovels} isLoading={isLoadingLatest} error={errorLatest as Error | null} />
-      <NovelCarousel title="Most Popular" novels={popularNovels} isLoading={isLoadingPopular} error={errorPopular as Error | null} />
-      <NovelCarousel title="Completed Novels" novels={completedNovels} isLoading={isLoadingCompleted} error={errorCompleted as Error | null} />
+      <NovelCarousel title="Latest Releases" novels={homeData?.latest} isLoading={isLoading} error={error as Error | null} />
+      <NovelCarousel title="Most Popular" novels={homeData?.popular} isLoading={isLoading} error={error as Error | null} />
+      <NovelCarousel title="Completed Novels" novels={homeData?.completed} isLoading={isLoading} error={error as Error | null} />
     </div>
   );
 }

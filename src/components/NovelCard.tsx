@@ -38,11 +38,14 @@ export function NovelCard({ novel }: NovelCardProps) {
               </h3>
               <p className="text-sm text-muted-foreground mt-1">{novel.author}</p>
             </div>
-            {novel.latestChapter && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Chapter {novel.latestChapter}
-              </p>
-            )}
+            <div className="text-xs text-muted-foreground mt-2 space-y-1">
+              {novel.latestChapter && (
+                <p>
+                  Latest: Chapter {novel.latestChapter}
+                </p>
+              )}
+        
+            </div>
           </CardContent>
         </Card>
       </Link>

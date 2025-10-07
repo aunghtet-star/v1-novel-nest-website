@@ -26,6 +26,7 @@ export interface Novel {
   status: 'Ongoing' | 'Completed';
   rating: number;
   latestChapter?: number;
+  totalChapters?: number;
   updatedAt?: string;
   moderationStatus: 'pending' | 'approved' | 'rejected';
   likeCount: number;

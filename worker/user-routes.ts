@@ -45,6 +45,18 @@ const seedDataMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => 
   await next();
 };
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const updateNovelWithChapterStats = async (env: Env, slug: string) => {
+  const novelEntity = new NovelEntity(env, slug);
+  const chapters = await ChapterEntity.listByNovel(env, slug);
+  await novelEntity.mutate(novel => ({
+    ...novel,
+    totalChapters: chapters.length,
+    latestChapter: chapters.length > 0 ? chapters[chapters.length - 1].chapterNumber : undefined,
+    updatedAt: new Date().toISOString(),
+  }));
+};
+
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Seed data on first request, preventing race conditions
   app.use('/api/*', seedDataMiddleware);
@@ -212,6 +224,8 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       moderationStatus: 'pending',
       likeCount: 0,
       viewCount: 0,
+      totalChapters: 0,
+      latestChapter: undefined,
     };
     await NovelEntity.create(c.env, newNovel);
     return ok(c, newNovel);
@@ -330,6 +344,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       publishedAt: new Date().toISOString(),
     };
     await ChapterEntity.create(c.env, newChapter);
+    await updateNovelWithChapterStats(c.env, slug);
     return ok(c, newChapter);
   });
   chapterRoutes.put('/:chapterNumber', async (c) => {
@@ -343,6 +358,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const chapter = await chapterEntity.getState();
     const updatedChapter = { ...chapter, ...body, publishedAt: new Date().toISOString() };
     await chapterEntity.save(updatedChapter);
+    await updateNovelWithChapterStats(c.env, slug);
     return ok(c, updatedChapter);
   });
   chapterRoutes.delete('/:chapterNumber', async (c) => {
@@ -352,6 +368,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const chapterId = `${slug}-chapter-${chapterNumber}`;
     const existed = await ChapterEntity.delete(c.env, chapterId);
     if (!existed) return notFound(c, 'Chapter not found');
+    await updateNovelWithChapterStats(c.env, slug);
     return ok(c, { message: 'Chapter deleted successfully' });
   });
   authorRoutes.route('/novels/:slug/chapters', chapterRoutes);
@@ -477,6 +494,43 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return ok(c, { message: 'Genre deleted successfully' });
   });
   app.route('/api/admin', authorRoutes.use('*', async (c, next) => next()).route('/', adminRoutes));
+
+  // --- PUBLIC PAGE-SPECIFIC ROUTES ---
+  app.get('/api/pages/home', async (c) => {
+    const allNovelsResult = await NovelEntity.list(c.env);
+    const approvedNovels = allNovelsResult.items.filter(n => n.moderationStatus === 'approved');
+
+    // Latest
+    const latestNovels = [...approvedNovels]
+      .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
+      .slice(0, 10);
+
+    // Popular
+    const popularNovels = [...approvedNovels]
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 10);
+
+    // Completed
+    const completedNovels = approvedNovels.filter(n => n.status === 'Completed');
+
+    // Enhance all of them in parallel
+    const [
+      latest,
+      popular,
+      completed
+    ] = await Promise.all([
+      Promise.resolve(latestNovels),
+      Promise.resolve(popularNovels),
+      Promise.resolve(completedNovels),
+    ]);
+
+    return ok(c, {
+      latest,
+      popular,
+      completed,
+    });
+  });
+
   // --- PUBLIC NOVEL & CONTENT ROUTES ---
   app.use('/api/novels/:slug/*', async (c, next) => {
     const slug = c.req.param('slug');
@@ -518,23 +572,27 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const paginated = paginate(sortedNovels, page, limit);
     return ok(c, { ...paginated, currentPage: page });
   });
+
   app.get('/api/novels/latest', async (c) => {
     const allNovelsResult = await NovelEntity.list(c.env);
     const approvedNovels = allNovelsResult.items.filter(n => n.moderationStatus === 'approved');
     const sortedNovels = [...approvedNovels].sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime());
     return ok(c, sortedNovels.slice(0, 10));
   });
+
   app.get('/api/novels/popular', async (c) => {
     const allNovelsResult = await NovelEntity.list(c.env);
     const approvedNovels = allNovelsResult.items.filter(n => n.moderationStatus === 'approved');
     const sortedNovels = [...approvedNovels].sort((a, b) => b.rating - a.rating);
     return ok(c, sortedNovels.slice(0, 10));
   });
+
   app.get('/api/novels/completed', async (c) => {
     const allNovelsResult = await NovelEntity.list(c.env);
     const completedNovels = allNovelsResult.items.filter(n => n.status === 'Completed' && n.moderationStatus === 'approved');
     return ok(c, completedNovels);
   });
+
   app.get('/api/genres', async (c) => {
     const page = await GenreEntity.list(c.env);
     return ok(c, page.items);
@@ -554,6 +612,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const paginated = paginate(sortedNovels, page, limit);
     return ok(c, { genre, novels: { ...paginated, currentPage: page } });
   });
+
   app.get('/api/novels/:slug', async (c) => {
     const slug = c.req.param('slug');
     if (!slug) return bad(c, 'Novel slug is required');
@@ -567,6 +626,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     };
     return ok(c, completeNovel);
   });
+
   app.get('/api/novels/:slug/chapters', async (c) => {
     const slug = c.req.param('slug');
     if (!slug) return bad(c, 'Novel slug is required');

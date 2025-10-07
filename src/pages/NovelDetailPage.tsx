@@ -52,7 +52,7 @@ export function NovelDetailPage() {
     if (isAuthenticated && slug) {
       viewMutation.mutate({ novelSlug: slug });
     }
-  }, [isAuthenticated, slug, viewMutation]);
+  }, [isAuthenticated, slug]);
   const isBookmarked = useMemo(() => {
     return !!bookmarks?.find(b => b.novelSlug === slug);
   }, [bookmarks, slug]);
